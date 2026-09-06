@@ -3,8 +3,12 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formspree.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://formspree.io mailto:
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://formspree.io https://uvcibhbslsvakmjcfzwx.supabase.co; frame-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://formspree.io mailto:
 /styles.css
   Cache-Control: public, max-age=86400
+/studio.css
+  Cache-Control: public, max-age=86400
 /app.js
+  Cache-Control: public, max-age=86400
+/studio.js
   Cache-Control: public, max-age=86400

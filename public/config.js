@@ -69,4 +69,12 @@ window.KAJ_CONFIG = {
   // Real client quotes go here. The section is hidden while the list is empty.
   // { quote: '…', name: 'Jane Doe', role: 'Founder, Acme', avatar: 'JD' }
   testimonials: [],
+
+  // Supabase backend for the AI Studio (intake + live AI previews).
+  // The anon key is a PUBLIC, publishable key — safe to ship in the browser.
+  // The real secret (ANTHROPIC_API_KEY) lives only in the Edge Function.
+  supabase: {
+    url: 'https://uvcibhbslsvakmjcfzwx.supabase.co',
+    anonKey: 'sb_publishable_-g9D7EaYyyQVrT2HrhYNkw_bYSu_bLz',
+  },
 };

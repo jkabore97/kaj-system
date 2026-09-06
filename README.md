@@ -106,3 +106,59 @@ npm install --save-dev playwright
 npx playwright install chromium
 npm run render-images
 ```
+
+## AI Studio (the SaaS)
+
+`public/studio.html` (served at **/studio**) is a real product, not a mockup:
+a prospective customer describes the app they want — by **chatting with an AI
+assistant** or **filling a 5-step wizard** — and Claude designs a **live,
+working HTML preview** of their app in the right-hand pane (phone or web frame).
+When they're happy they hit **Send to Kaj System**, which saves the project +
+preview for you to pick up and build.
+
+### How it's wired
+
+```
+Browser (studio.html + studio.js)
+   │  POST (anon key)         no secrets in the browser
+   ▼
+Supabase Edge Function  generate-preview   ← ANTHROPIC_API_KEY lives here
+   │  service role                            calls Claude (claude-opus-5)
+   ▼
+Postgres  public.projects   (RLS-locked: only the function can read/write)
+```
+
+- **Supabase project:** `kaj-system` (ref `uvcibhbslsvakmjcfzwx`), isolated from
+  any other project. URL + public anon key are in `public/config.js`.
+- **Edge Function:** `supabase/functions/generate-preview/index.ts` — takes the
+  spec/conversation, asks Claude for a self-contained HTML preview, stores it,
+  returns it. Deployed with `verify_jwt=false` (public intake) and its own
+  per-session rate limit (15 previews/hour).
+- **Database:** `projects` (every submission: spec, transcript, preview HTML,
+  status, contact) and `generation_log` (rate limiting). Both have RLS **on with
+  no policies** — clients get zero direct access; the function (service role) is
+  the only reader/writer.
+- **The generated preview** renders in a **sandboxed iframe** (`allow-scripts`,
+  no same-origin) so untrusted AI HTML can't touch the page.
+
+### ⚠️ One required step: add your Anthropic API key
+
+The AI is off until you add the secret (until then the Studio returns a
+"configure me" placeholder preview so the flow still works):
+
+1. Create a key at <https://console.anthropic.com> → API Keys.
+2. Supabase dashboard → project **kaj-system** → **Edge Functions → Secrets** →
+   add `ANTHROPIC_API_KEY` = your key. (No redeploy needed.)
+3. Open `/studio`, describe an app, and watch the real preview appear.
+
+**Model / cost:** the function uses `claude-opus-5` (best design quality). To cut
+cost, change `MODEL` in the function to `claude-sonnet-5` and redeploy. Each
+preview is one API call, billed to your Anthropic account.
+
+### Where submissions land (for now)
+
+Every project is saved in the `projects` table with `status` moving
+`new → previewed → contacted`. Reading and managing them from a proper **admin
+dashboard** is the next phase; today you can view them in the Supabase Table
+Editor. Customer accounts (so people can return to their saved previews) are the
+phase after that.
