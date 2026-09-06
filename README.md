@@ -23,13 +23,17 @@ scripts/render-images.mjs  ← regenerates the icons and social card (dev tool)
 
 ## What is on the page
 
-Hero with an animated phone mock-up, six services, the ELIM case study plus
-six ready-to-adapt solution cards, a six-step process timeline, a "why us"
-block, four fixed-price packages and a monthly care plan, an **interactive
-project estimator** that feeds the contact form, testimonials (hidden until
-`config.js` has real quotes), an FAQ, and a contact form. Extras: English +
-French (auto-detected, switchable), light/dark theme, SEO/Open Graph/JSON-LD,
-sitemap, PWA manifest, security headers, and a 404 / thank-you / privacy page.
+Animated hero, a **"Four pillars. One craft."** methodology section, six
+services in a bento grid, an **interactive project estimator**, the ELIM case
+study plus six ready-to-adapt solutions, process, pricing, FAQ, and a
+two-path intake: **"Fill the form"** or **"Talk it through"** — a guided
+**AI intake assistant** that asks a few questions in plain language, produces
+a brief and an instant ballpark, and hands it to the contact form (no API key
+required; it's a scripted, client-side conversation). Extras: English +
+French (auto-detected, switchable), dark-first theme with a light mode,
+SEO/Open Graph/JSON-LD, sitemap, PWA manifest, security headers, and
+404 / thank-you / privacy pages. The estimator and AI assistant numbers all
+come from `public/config.js`.
 
 ## Run it locally
 

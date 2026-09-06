@@ -204,23 +204,29 @@
   var E = CFG.estimator || {};
   var estForm = $('#estimator');
   var estimate = null;
-  function computeEstimate() {
-    if (!estForm || !E.base) return null;
-    var platform = (estForm.querySelector('input[name="platform"]:checked') || {}).value || 'webapp';
-    var base = E.base[platform] || { price: 0, weeks: 0 };
-    var price = base.price, weeks = base.weeks, addons = [];
-    $$('input[name="addon"]:checked', estForm).forEach(function (cb) {
-      var a = (E.addons || {})[cb.value]; if (!a) return;
-      price += a.price; weeks += a.weeks; addons.push(cb.value);
+  // Pure pricing helper shared by the estimator and the AI intake chat.
+  function estimateFrom(platform, addons, rush) {
+    if (!E.base || !E.base[platform]) return null;
+    var base = E.base[platform];
+    var price = base.price, weeks = base.weeks;
+    (addons || []).forEach(function (k) {
+      var a = (E.addons || {})[k]; if (!a) return;
+      price += a.price; weeks += a.weeks;
     });
-    var rush = (estForm.querySelector('input[name="speed"]:checked') || {}).value === 'rush';
     if (rush && E.rush) { price *= E.rush.price; weeks *= E.rush.weeks; }
     var spread = E.spread || 0.15;
     return {
-      platform: platform, addons: addons, rush: rush,
+      platform: platform, addons: (addons || []).slice(), rush: !!rush,
       low: price * (1 - spread), high: price * (1 + spread),
       weeksLow: Math.max(1, Math.round(weeks)), weeksHigh: Math.max(1, Math.round(weeks * 1.25)),
     };
+  }
+  function computeEstimate() {
+    if (!estForm || !E.base) return null;
+    var platform = (estForm.querySelector('input[name="platform"]:checked') || {}).value || 'webapp';
+    var addons = $$('input[name="addon"]:checked', estForm).map(function (cb) { return cb.value; });
+    var rush = (estForm.querySelector('input[name="speed"]:checked') || {}).value === 'rush';
+    return estimateFrom(platform, addons, rush);
   }
   function renderEstimate() {
     estimate = computeEstimate();
@@ -296,6 +302,179 @@
       .catch(function () { showStatus('err', t('contact.error') + ' ' + (C.email || '')); })
       .then(function () { submitBtn.disabled = false; label.textContent = old; });
   });
+
+  /* Intake panel toggle (Fill the form / Talk it through) ---------------- */
+  var intakeToggle = $('#intakeToggle');
+  var panels = $$('.contact .panel');
+  var chatStarted = false;
+  function showPanel(which) {
+    panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== which; });
+    if (intakeToggle) $$('button', intakeToggle).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-panel') === which); });
+    if (which === 'chat' && !chatStarted) { chatStarted = true; startChat(); }
+  }
+  if (intakeToggle) {
+    $$('button', intakeToggle).forEach(function (b) {
+      b.addEventListener('click', function () { showPanel(b.getAttribute('data-panel')); });
+    });
+  }
+
+  /* AI intake chat ------------------------------------------------------- */
+  var chatLog = $('#chatLog'), chatQuick = $('#chatQuick'), chatInputForm = $('#chatInputForm'), chatInput = $('#chatInput');
+  var brief = { platform: '', about: '', features: [], timeline: '', budget: '', name: '', reach: '' };
+
+  // Conversation script. Each step: a question, an input mode and (for chips) options.
+  function steps() {
+    return [
+      { key: 'platform', q: 'ai.q.platform', mode: 'single',
+        options: [['website', 'est.p.website'], ['webapp', 'est.p.webapp'], ['mobile', 'est.p.mobile'], ['system', 'contact.type.system'], ['other', 'contact.type.other']] },
+      { key: 'about', q: 'ai.q.about', mode: 'text' },
+      { key: 'features', q: 'ai.q.features', mode: 'multi', done: 'ai.featuresDone',
+        options: [['accounts', 'est.a.accounts'], ['payments', 'est.a.payments'], ['admin', 'est.a.admin'], ['chat', 'est.a.chat'], ['push', 'est.a.push'], ['i18n', 'est.a.i18n'], ['offline', 'est.a.offline'], ['ai', 'est.a.ai'], ['design', 'est.a.design']] },
+      { key: 'timeline', q: 'ai.q.timeline', mode: 'single',
+        options: [['rush', 'ai.t.asap'], ['standard', 'ai.t.normal'], ['flexible', 'ai.t.flex']] },
+      { key: 'budget', q: 'ai.q.budget', mode: 'single',
+        options: [['<1000', 'contact.budget.1'], ['1000-3000', 'contact.budget.2'], ['3000-8000', 'contact.budget.3'], ['>8000', 'contact.budget.4']] },
+      { key: 'name', q: 'ai.q.name', mode: 'text' },
+      { key: 'reach', q: 'ai.q.reach', mode: 'text' },
+    ];
+  }
+  var flow = [], stepIdx = 0;
+
+  function scrollChat() { if (chatLog) chatLog.scrollTop = chatLog.scrollHeight; }
+  function addMsg(cls, text) {
+    var el = document.createElement('div'); el.className = 'msg ' + cls; el.textContent = text;
+    chatLog.appendChild(el); scrollChat(); return el;
+  }
+  function typing(cb, delay) {
+    var el = document.createElement('div'); el.className = 'msg bot typing'; el.innerHTML = '<i></i><i></i><i></i>';
+    chatLog.appendChild(el); scrollChat();
+    setTimeout(function () { el.remove(); cb(); }, reduceMotion ? 60 : (delay || 650));
+  }
+  function botSay(text, cb) { typing(function () { addMsg('bot', text); if (cb) cb(); }, 550 + Math.min(text.length * 12, 700)); }
+
+  function renderQuick(step) {
+    chatQuick.innerHTML = '';
+    if (step.mode === 'text') { chatInputForm.classList.remove('hide'); chatInput.value = ''; chatInput.focus(); return; }
+    chatInputForm.classList.add('hide');
+    var selected = [];
+    step.options.forEach(function (o) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = t(o[1]); b.dataset.val = o[0];
+      b.addEventListener('click', function () {
+        if (step.mode === 'single') { answer(step, o[0], t(o[1])); }
+        else {
+          var i = selected.indexOf(o[0]);
+          if (i >= 0) { selected.splice(i, 1); b.classList.remove('sel'); }
+          else { selected.push(o[0]); b.classList.add('sel'); }
+        }
+      });
+      chatQuick.appendChild(b);
+    });
+    if (step.mode === 'multi') {
+      var go = document.createElement('button'); go.type = 'button'; go.className = 'go'; go.textContent = t(step.done);
+      go.addEventListener('click', function () {
+        var labels = selected.map(function (v) { var f = step.options.filter(function (o) { return o[0] === v; })[0]; return f ? t(f[1]) : v; });
+        answer(step, selected.slice(), labels.length ? labels.join(', ') : t('ai.none'));
+      });
+      chatQuick.appendChild(go);
+    }
+  }
+
+  function answer(step, value, label) {
+    brief[step.key] = value;
+    addMsg('user', label);
+    chatQuick.innerHTML = ''; chatInputForm.classList.add('hide');
+    stepIdx++;
+    setTimeout(nextStep, reduceMotion ? 40 : 250);
+  }
+
+  function nextStep() {
+    if (stepIdx >= flow.length) { finishChat(); return; }
+    var step = flow[stepIdx];
+    botSay(t(step.q), function () { renderQuick(step); });
+  }
+
+  function platformForEstimate(p) { return (p === 'website' || p === 'webapp' || p === 'mobile') ? p : 'webapp'; }
+
+  function finishChat() {
+    chatInputForm.classList.add('hide'); chatQuick.innerHTML = '';
+    var est = estimateFrom(platformForEstimate(brief.platform), brief.features, brief.timeline === 'rush');
+    typing(function () {
+      var el = document.createElement('div'); el.className = 'msg bot summary';
+      var featLabels = (brief.features || []).map(function (v) { return t('est.a.' + v); });
+      var lines = [
+        t('ai.summary.title'),
+        t('ai.f.building') + ' ' + labelFor('platform', brief.platform),
+        brief.about ? (t('ai.f.about') + ' ' + brief.about) : null,
+        (featLabels.length ? t('ai.f.features') + ' ' + featLabels.join(', ') : null),
+        t('ai.f.timeline') + ' ' + labelFor('timeline', brief.timeline),
+        t('ai.f.budget') + ' ' + labelFor('budget', brief.budget),
+      ].filter(Boolean);
+      el.textContent = lines.join('\n');
+      if (est) {
+        var span = document.createElement('span'); span.className = 'est';
+        span.textContent = money(est.low) + ' – ' + money(est.high) + ' · ' + est.weeksLow + '–' + est.weeksHigh + ' ' + t('est.weeksUnit');
+        el.appendChild(span);
+      }
+      chatLog.appendChild(el); scrollChat();
+      typing(function () {
+        addMsg('bot', t('ai.handoff'));
+        var go = document.createElement('button'); go.type = 'button'; go.className = 'go';
+        go.textContent = t('ai.sendBtn');
+        go.addEventListener('click', handoffToForm);
+        chatQuick.appendChild(go);
+      }, 500);
+    }, 700);
+  }
+
+  function labelFor(kind, val) {
+    var maps = {
+      platform: { website: 'est.p.website', webapp: 'est.p.webapp', mobile: 'est.p.mobile', system: 'contact.type.system', other: 'contact.type.other' },
+      timeline: { rush: 'ai.t.asap', standard: 'ai.t.normal', flexible: 'ai.t.flex' },
+      budget: { '<1000': 'contact.budget.1', '1000-3000': 'contact.budget.2', '3000-8000': 'contact.budget.3', '>8000': 'contact.budget.4' },
+    };
+    var k = (maps[kind] || {})[val];
+    return k ? t(k) : (val || '');
+  }
+
+  function handoffToForm() {
+    var typeSel = $('#f-type'); if (typeSel) typeSel.value = ['website', 'webapp', 'mobile', 'system'].indexOf(brief.platform) >= 0 ? brief.platform : 'other';
+    var budgetSel = $('#f-budget'); if (budgetSel && brief.budget) budgetSel.value = brief.budget;
+    if (brief.name) $('#f-name').value = brief.name;
+    // Route the "reach" answer to email or phone.
+    if (brief.reach) { if (brief.reach.indexOf('@') >= 0) $('#f-email').value = brief.reach; else $('#f-phone').value = brief.reach; }
+    var featLabels = (brief.features || []).map(function (v) { return t('est.a.' + v); });
+    var est = estimateFrom(platformForEstimate(brief.platform), brief.features, brief.timeline === 'rush');
+    var msg = [
+      t('ai.summary.title'),
+      t('ai.f.building') + ' ' + labelFor('platform', brief.platform),
+      brief.about ? t('ai.f.about') + ' ' + brief.about : null,
+      featLabels.length ? t('ai.f.features') + ' ' + featLabels.join(', ') : null,
+      t('ai.f.timeline') + ' ' + labelFor('timeline', brief.timeline),
+      t('ai.f.budget') + ' ' + labelFor('budget', brief.budget),
+      est ? '\n' + t('est.result') + ': ' + money(est.low) + ' – ' + money(est.high) + ' (' + est.weeksLow + '–' + est.weeksHigh + ' ' + t('est.weeksUnit') + ')' : null,
+    ].filter(Boolean).join('\n');
+    var ta = $('#f-msg'); if (ta) ta.value = msg;
+    showPanel('form');
+    if (submitBtn) { submitBtn.scrollIntoView({ block: 'center' }); }
+    var missing = !$('#f-email').value && !$('#f-phone').value;
+    (missing ? $('#f-email') : $('#f-msg')).focus();
+  }
+
+  function startChat() {
+    flow = steps(); stepIdx = 0;
+    brief = { platform: '', about: '', features: [], timeline: '', budget: '', name: '', reach: '' };
+    chatLog.innerHTML = ''; chatQuick.innerHTML = '';
+    botSay(t('ai.greeting'), function () { nextStep(); });
+  }
+
+  if (chatInputForm) {
+    chatInputForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = chatInput.value.trim(); if (!v) return;
+      var step = flow[stepIdx]; if (!step || step.mode !== 'text') return;
+      answer(step, v, v);
+    });
+  }
 
   applyLang(lang);
 })();
