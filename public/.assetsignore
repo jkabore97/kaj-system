@@ -1,0 +1,5 @@
+# Files that may appear in this folder but must never be published as assets.
+**/node_modules
+**/.DS_Store
+**/.git
+_worker.js

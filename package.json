@@ -2,12 +2,11 @@
   "name": "kaj-system-website",
   "private": true,
   "version": "1.0.0",
-  "description": "Marketing website for Kaj System – static, no build step.",
+  "description": "Marketing website for Kaj System - a static site served from ./public, no build step.",
   "scripts": {
-    "dev": "npx -y http-server -p 5173 -c-1 .",
+    "dev": "npx -y http-server public -p 5173 -c-1",
+    "deploy": "npx wrangler deploy",
+    "preview": "npx wrangler dev",
     "render-images": "node scripts/render-images.mjs"
-  },
-  "devDependencies": {
-    "playwright": "^1.56.1"
   }
 }
