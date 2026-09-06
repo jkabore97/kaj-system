@@ -96,6 +96,58 @@
     reveals.forEach(function (el) { io.observe(el); });
   } else { reveals.forEach(function (el) { el.classList.add('in'); }); }
 
+  var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Marquee -------------------------------------------------------------- */
+  var marquee = $('#marquee');
+  if (marquee) {
+    var items = ['iOS', 'Android', 'Web & PWA', 'React', 'TypeScript', 'Firebase', 'Supabase', 'Stripe', 'AI assistants', 'Push notifications', 'Offline-first', 'Cloudflare'];
+    var html = items.map(function (i) { return '<span>' + i + '</span>'; }).join('');
+    marquee.innerHTML = html + html; // duplicate for a seamless loop
+  }
+
+  /* Animated counters ---------------------------------------------------- */
+  var counters = $$('[data-count]');
+  if (counters.length && 'IntersectionObserver' in window && !reduceMotion) {
+    var co = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        co.unobserve(en.target);
+        var el = en.target, target = parseInt(el.getAttribute('data-count'), 10) || 0, start = null, dur = 1100;
+        function tick(ts) {
+          if (start === null) start = ts;
+          var p = Math.min((ts - start) / dur, 1);
+          var eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = String(Math.round(eased * target));
+          if (p < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    }, { threshold: 0.6 });
+    counters.forEach(function (el) { co.observe(el); });
+  }
+
+  /* Cursor glow (fine pointers only) ------------------------------------- */
+  var glow = $('#cursorGlow');
+  if (glow && matchMedia('(hover: hover) and (pointer: fine)').matches && !reduceMotion) {
+    window.addEventListener('pointermove', function (e) {
+      glow.style.left = e.clientX + 'px'; glow.style.top = e.clientY + 'px'; glow.classList.add('on');
+    }, { passive: true });
+  }
+
+  /* Subtle 3D tilt on the hero card -------------------------------------- */
+  var tilt = $('#tilt');
+  if (tilt && matchMedia('(hover: hover) and (pointer: fine)').matches && !reduceMotion) {
+    var wrap = tilt.parentElement;
+    wrap.addEventListener('pointermove', function (e) {
+      var r = wrap.getBoundingClientRect();
+      var rx = ((e.clientY - r.top) / r.height - 0.5) * -6;
+      var ry = ((e.clientX - r.left) / r.width - 0.5) * 8;
+      tilt.style.transform = 'rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
+    });
+    wrap.addEventListener('pointerleave', function () { tilt.style.transform = ''; });
+  }
+
   /* Config-driven bits --------------------------------------------------- */
   var cur = CFG.currency || { symbol: '$' };
   function money(n) {
